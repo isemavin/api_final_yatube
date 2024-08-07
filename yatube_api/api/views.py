@@ -1,23 +1,19 @@
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
 from rest_framework import filters
+
 from django.shortcuts import get_object_or_404
 from rest_framework.pagination import LimitOffsetPagination
 
-from api.permissions import AuthorOrReadOnly, ReadOnly
+from api.permissions import AuthenticatedOrReadOnly, ReadOnly
 from posts.models import Comment, Follow, Group, Post
 from api.serializers import (
     CommentSerializer, FollowSerializer, GroupSerializer, PostSerializer)
 
 
-def get_post(post_id):
-    post = get_object_or_404(Post, pk=post_id)
-    return post
-
-
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
-    permission_classes = (AuthorOrReadOnly,)
+    permission_classes = (AuthenticatedOrReadOnly,)
     pagination_class = LimitOffsetPagination
 
     def perform_create(self, serializer):
@@ -32,7 +28,7 @@ class PostViewSet(viewsets.ModelViewSet):
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
-    permission_classes = (AuthorOrReadOnly,)
+    permission_classes = (AuthenticatedOrReadOnly,)
 
     def get_permissions(self):
         if self.action == 'retrieve':
@@ -42,17 +38,18 @@ class CommentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             author=self.request.user,
-            post=get_post(self.kwargs.get('post_id'))
+            post=get_object_or_404(Post, pk=self.kwargs.get('post_id'))
         )
 
     def get_queryset(self):
-        return get_post(self.kwargs.get('post_id')).comments.all()
+        return get_object_or_404(Post,
+                                 pk=self.kwargs.get('post_id')).comments.all()
 
 
 class GroupViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-    permission_classes = (AuthorOrReadOnly,)
+    permission_classes = (AuthenticatedOrReadOnly,)
 
     def get_permissions(self):
         if self.action == 'retrieve':
@@ -60,7 +57,9 @@ class GroupViewSet(viewsets.ReadOnlyModelViewSet):
         return super().get_permissions()
 
 
-class FollowViewSet(viewsets.ModelViewSet):
+class FollowViewSet(mixins.CreateModelMixin,
+                    mixins.ListModelMixin,
+                    viewsets.GenericViewSet):
     queryset = Follow.objects.all()
     serializer_class = FollowSerializer
     filter_backends = (filters.SearchFilter,)
